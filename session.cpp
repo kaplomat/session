@@ -135,7 +135,7 @@ database database::open(std::string filename) {
     sqlite3* ppDb;
     int result;
 
-    cout << "opening database " << filename << "..." << endl;
+    cerr << "opening database " << filename << "..." << endl;
 
     result = sqlite3_open_v2(
             filename.c_str(), &ppDb,
@@ -143,8 +143,8 @@ database database::open(std::string filename) {
             nullptr);
 
     if (result != SQLITE_OK) {
-        cout << "could not open database: " << _sqlite_what(result) << endl;
-        cout << "will try creating a new one" << endl;
+        cerr << "could not open database: " << _sqlite_what(result) << endl;
+        cerr << "will try creating a new one" << endl;
     }
 
     result = sqlite3_open_v2(
@@ -167,13 +167,13 @@ bool database::prepare() {
     validity v = this->check_if_valid();
     switch (v) {
     case validity::valid:
-        cout << "database valid" << endl;
+        cerr << "database valid" << endl;
         return true;
     case validity::invalid:
-        cout << "database is CORRUPTED" << endl;
+        cerr << "database is CORRUPTED" << endl;
         return false;
     case validity::empty:
-        cout << "will initialize empty database" << endl;
+        cerr << "will initialize empty database" << endl;
         return this->initialize_database();
     }
 
@@ -210,11 +210,11 @@ validity database::check_if_valid() {
         sqlite3_free(errmsg);
 
         if (msg == "no such table: session.meta") {
-            cout << "database seems empty - no session.meta table" << endl;
+            cerr << "database seems empty - no session.meta table" << endl;
             return validity::empty;
         }
         else {
-            cout << "There was an error: " << msg << endl;
+            cerr << "There was an error: " << msg << endl;
             return validity::invalid;
         }
     }
@@ -222,13 +222,13 @@ validity database::check_if_valid() {
     assert (result == SQLITE_OK);
 
     if (*version == "") {
-        cout << "No valid version found - database corrupted?" << endl;
+        cerr << "No valid version found - database corrupted?" << endl;
         return validity::invalid;
     }
 
     cout << "version=" << *version << endl;
     if (*version != "0.1") {
-        cout << "unknown version; cannot proceed" << endl;
+        cerr << "unknown version; cannot proceed" << endl;
         return validity::invalid;
     }
 
@@ -236,7 +236,7 @@ validity database::check_if_valid() {
 }
 
 static int _handle_prepare(void* isnull, int a, char** c1, char** c2) {
-    cout << a << endl;
+    cerr << a << endl;
     return SQLITE_OK;
 }
 
@@ -252,7 +252,7 @@ bool database::initialize_database() {
         std::string msg = errmsg;
         sqlite3_free(errmsg);
 
-        cout << "Could not initialize database: " << msg << endl;
+        cerr << "Could not initialize database: " << msg << endl;
         return false;
     }
 
@@ -352,8 +352,8 @@ int main(int argc, char** argv) {
         result = db.prepare();
     }
     catch (sqlite_exception& exc) {
-        cout << "got an error: " << exc.what() << endl;
-        cout << db.describe_error() << endl;
+        cerr << "got an error: " << exc.what() << endl;
+        cerr << db.describe_error() << endl;
     }
 
     if (!result) {
