@@ -4,6 +4,8 @@
 #include <map>
 #include <sstream>
 
+#include <boost/program_options.hpp>
+
 #include <cstring>
 #include <cassert>
 
@@ -271,13 +273,80 @@ struct session_name_t {
 
 } // namespace model
 
-void usage(char* prog) {
-    cout << prog << " " << "<get|set>" << endl;
+void usage(boost::program_options::options_description desc) {
+    cerr << desc << endl;
 }
 
 int main(int argc, char** argv) {
+    namespace po = boost::program_options;
+
+    po::options_description desc("Allowed options");
+    desc.add_options()
+            ("help", "produce help message")
+            ("id", po::value<string>(), "set session label")
+            ("set", po::value<string>(), "specify variable to set")
+            ("get", po::value<string>(), "specify variable to get")
+            ("value", po::value<string>(), "specify value to set to variable")
+            ("db", po::value<string>(), "database file to use [default available in the future]");
+
+    po::variables_map vm;
+    po::store(po::parse_command_line(argc, argv, desc), vm);
+    po::notify(vm);
+
+    if (vm.count("help")) {
+        usage(desc);
+        return 0;
+    }
+
+    string db_file, id, get, set, value;
+
+    if (vm.count("db")) {
+        db_file = vm["db"].as<string>();
+        cerr << "Will use database " << db_file << endl;
+    }
+    else {
+        cerr << "No database specified." << endl
+             << "   This development version doesn't have a default database." << endl
+             << "   Please use --db <file> option to specify one." << endl;
+        return 1;
+    }
+
+    if (vm.count("id")) {
+        id = vm["id"].as<string>();
+        cerr << "Id is " << id << endl;
+    } else {
+        cerr << "Id not set." << endl;
+        return 1;
+    }
+
+    if (vm.count("get")) {
+        if (vm.count("set")) {
+            cerr << "--get and --set options set in the same time!" << endl;
+            return 1;
+        }
+
+        get = vm["get"].as<string>();
+        cerr << "Will get " << get << endl;
+    }
+
+    if (vm.count("set")) {
+        assert(vm.count("get") == 0);
+
+        set = vm["set"].as<string>();
+        cerr << "Will set " << set << endl;
+
+        if (vm.count("value")) {
+            value = vm["value"].as<string>();
+            cerr << "To value " << value << endl;
+        }
+        else {
+            cerr << "--set specified, but no --value flag" << endl;
+            return 1;
+        }
+    }
+
     bool result;
-    database db = database::open("database.db");
+    database db = database::open(db_file);
 
     try {
         result = db.prepare();
@@ -288,12 +357,7 @@ int main(int argc, char** argv) {
     }
 
     if (!result) {
-        cout << "error preparing the database" << endl;
-        exit(1);
-    }
-
-    if (argc < 2) {
-        usage(*argv);
+        cerr << "error preparing the database" << endl;
         exit(1);
     }
 
