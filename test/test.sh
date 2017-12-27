@@ -1,18 +1,26 @@
 #!/bin/bash
 
-PROG='../session'
-[ -f "$PROG" ] || {
+function _cmd()
+{
+	echo "> $*" > /dev/stderr
+	$*
+
+	return $?
+}
+
+PROGF='./session'
+[ -f "$PROGF" ] || {
   echo 'No `session` binary found in project directory.'
   echo 'Please `make all` before running tests!'
+  echo 'Make sure you are running tests from the root project dir.'
   exit 1
 }
 
-echo "> $PROG --id test-sess --set name --value haha"
-$PROG --id test-sess --set name --value haha
+TEST_DB=$(mktemp 'session.XXXX.db' --tmpdir=/tmp)
+PROG="$PROGF --db $TEST_DB"
 
-echo "$PROG --id test-sess --get name"
-val=$(> $PROG --id test-sess --get name)
-echo "$val"
+_cmd "$PROG --id test-sess --set name --value haha"
+val=$(_cmd "$PROG --id test-sess --get name")
 
 [ "$val" = "haha" ] || {
   echo 'FAILURE:'
