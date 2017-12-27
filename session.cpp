@@ -28,15 +28,20 @@ auto open_database(std::string filename) {
     using namespace model;
 
     return make_storage(filename,
-        make_table(SESSION_META_INFO,
-            make_column("id", &session_meta_t::id,
-                        autoincrement(), primary_key()),
-            make_column("key", &session_meta_t::key, unique()),
+        make_table("meta_info",
+            make_column("key", &session_meta_t::key, primary_key()),
             make_column("value", &session_meta_t::value)),
-        make_table(SESSION_SESSION_INFO,
+        make_table("session_info",
             make_column("id", &session_name_t::id,
                         autoincrement(), primary_key()),
-            make_column("name", &session_name_t::name, unique())));
+            make_column("name", &session_name_t::name, unique())),
+        make_table("data_entries",
+            make_column("session_id", &session_data_t::session_id),
+            make_column("name", &session_data_t::name),
+            make_column("value", &session_data_t::value),
+            foreign_key(&session_data_t::session_id).references(&session_name_t::id),
+            primary_key(&session_data_t::session_id, &session_data_t::name))
+    );
 }
 
 using storage_instance = decltype(open_database(""));
@@ -73,24 +78,18 @@ validity validate_database(storage_instance& storage) {
     using namespace sqlite_orm;
 
     bool possibly_empty = false;
-    bool truly_empty = true;
     std::string version;
 
-    vector<session_meta_t> entries = storage.get_all<session_meta_t>(
-        where(is_equal(&session_meta_t::key, SESSION_META_VERSION))
-    );
-
-    size_t count = entries.size();
-    assert(count <= 1);
-
-    if (count == 0) {
+    try {
+        session_meta_t entry = storage.get<session_meta_t>(DB_VERSION_KEY);
+        version = entry.value;
+    }
+    catch (not_found_exception& exc) {
         cerr << "No version entry - will check the database" << endl;
         possibly_empty = true;
     }
-    else {
-        version = entries[0].value;
-    }
 
+    bool truly_empty = true;
     if (possibly_empty) {
         if (!ensure_empty_table<session_meta_t>(storage)) {
             cerr << "meta table is not empty" << endl;
@@ -110,7 +109,7 @@ validity validate_database(storage_instance& storage) {
         return validity::invalid;
     }
 
-    if (version != DB_VERSION) {
+    if (version != DB_VERSION_VALUE) {
         cerr << "invalid version " << version << "; won't proceed" << endl;
         return validity::invalid;
     }
@@ -119,9 +118,7 @@ validity validate_database(storage_instance& storage) {
 }
 
 bool initialize_database(storage_instance storage) {
-    model::session_meta_t entry{-1, SESSION_META_VERSION, DB_VERSION};
-    auto id = storage.insert(entry);
-
+    storage.replace(model::session_meta_t{DB_VERSION_KEY, DB_VERSION_VALUE});
     return true;
 }
 
@@ -176,6 +173,51 @@ model::entity_id get_session_id(storage_instance& db, std::string name) {
 
     assert(count > 1);
     throw std::runtime_error("more than one session with id");
+}
+
+model::session_data_t find_data_entry(storage_instance& db,
+    model::entity_id session_id, std::string name) {
+
+    using namespace model;
+    using namespace sqlite_orm;
+
+    try {
+        return db.get<session_data_t>(session_id, name);
+    }
+    catch (not_found_exception& exc) {
+        return {-1};
+    }
+}
+
+std::string get_value(storage_instance& db,
+    model::entity_id session_id, std::string name) {
+
+    auto entry = find_data_entry(db, session_id, name);
+    if (entry.session_id == -1) {
+        cerr << "No entry " << name << " for session " << session_id << endl;
+        return "";
+    }
+
+    return entry.value;
+}
+
+void set_value(storage_instance& db, model::entity_id session_id,
+    std::string name, std::string value) {
+
+    auto entry = find_data_entry(db, session_id, name);
+    if (entry.session_id == -1) {
+        cerr << "No entry " << name << " for session " << session_id << endl;
+
+        entry.session_id = session_id;
+        entry.name = name;
+        entry.value = value;
+
+        db.replace(entry);
+    }
+    else {
+        entry.value = value;
+        db.update(entry);
+    }
 }
 
 void usage(boost::program_options::options_description desc) {
@@ -274,5 +316,18 @@ int main(int argc, char** argv) {
     model::entity_id session_id = get_session_id(db, id);
     cerr << "got session id " << session_id << endl;
 
-    return 1;
+    switch (op) {
+    case operation_t::get:
+        value = get_value(db, session_id, name);
+        cout << value << endl;
+        break;
+    case operation_t::set:
+        set_value(db, session_id, name, value);
+        break;
+    default:
+        cerr << "Unknown operation " << static_cast<int>(op) << endl;
+        return 1;
+    }
+
+    return 0;
 }
